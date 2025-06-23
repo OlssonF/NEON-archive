@@ -1,0 +1,96 @@
+---
+title: "User example"
+author: "Freya Olsson"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+These code provide an example workflow for downloading and accessing the archived forecasts/scores from the NEON forecasting challenge. The steps are as follows:
+
+1.  Download and unzip files
+2.  Open and query the parquet files
+
+## Package set-up
+
+This example workflow uses the `arrow` package to read the parquet database as well as the `tidyverse` syntax for subsetting and filtering the data for great accessibility. Other packages are available for parquet file manipulation and reading.
+
+```{r package-setup, echo=TRUE, message=FALSE, warning=FALSE}
+if (!require("pacman")) install.packages("pacman")
+
+required_packages <- c('tidyverse', 'arrow', 'here')
+pacman::p_load(required_packages)
+```
+
+## File download and unzipping
+
+We will access the location of the archived files. The scores, forecasts, and NOAA weather drivers are saved as a zipped parquet database, and separated by variable given the file sizes. If you want to use multiple variables they will need to be downloaded and unzipped individually. This example will demonstrate for a single variable. Forecast targets (observations) are saved as a csv and archived per theme (for the original challenge design - see archive metadata).
+
+```{r download-unzip}
+archive_url <- "https://sandbox.zenodo.org/records/277053/files/forecasts_P1D_chla.zip?download=1" # currently using a sandbox environment for testing!
+save_here <- "chla.zip"
+project_dir <- here::here()
+sub_dir <- 'forecasts'
+
+dir.create(file.path(project_dir, sub_dir))
+
+download.file(url = archive_url,
+              destfile = file.path(project_dir, sub_dir, save_here), 
+              method = "curl")
+
+unzip(file.path(project_dir, sub_dir, save_here), exdir = file.path(project_dir, sub_dir))
+
+```
+
+The above paths can be manipulated to save and extract the files to your desired location.
+
+## Interacting with the parquet database
+
+The data are saved as a parquet dataset - an efficient data storage type for large datasets such as the NEON Challenge archive. Within each variable dataset the files are *partitioned* by model_id. The partitions segment the data by the datakey column, a unique key to divide large datasets into smaller, more manageable subsets based on the values of one or more columns. This method significantly improves query performance by allowing query engines to skip over irrelevant partitions, reading only the necessary data. This particular dataset uses *hive-style partitioning* in which partitions are encoded as "key=value" in path segments (e.g., "model_id=climatology/part-0.parquet").
+
+One option is to navigate to the model_id you are interested using the `arrow::open_dataset` then use the `collect()` function to bring it in.
+
+For example to get the forecasts from the `tg_arima` model:
+
+```{r example-path}
+
+example_df <- arrow::open_dataset(file.path(project_dir, sub_dir, "forecasts_P1D_chla", "model_id=tg_arima")) |> 
+  dplyr::collect() 
+
+dplyr::glimpse(example_df)
+```
+
+> Note that because the files have been archived by variable, the variable name is not in the parquet dataset. You would need to add this in using `mutate(variable = 'chla')`. Similarly, because we have navigated to a specific key in the model_id partition the model_id column is also missing!
+
+An altervative method that can be used are to use the tidyverse functions to further subset the data based on queries. We can use filter to query the dataset before using `collect()`. 
+
+```{r example-query}
+
+example_df2 <- arrow::open_dataset(file.path(project_dir, sub_dir, "forecasts_P1D_chla")) |>
+  dplyr::filter(model_id == 'tg_arima') |> 
+  dplyr::collect() 
+
+dplyr::glimpse(example_df2)
+```
+
+> This time we do have the model id (although the variable is still missing). 
+
+The dataset can also be queried using other columns that are not specified in the partitions. For example to get a single reference_datetime from a subset of sites:
+
+```{r example-query-2}
+get_reference_datetime <- lubridate::as_datetime('2024-01-01') # needs to be a datetime to match the column type in the parquet
+get_site_id <- c('BARC', 'ARIK')
+
+example_df3 <- arrow::open_dataset(file.path(project_dir, sub_dir, "forecasts_P1D_chla")) |>
+  dplyr::filter(model_id == 'tg_arima',
+                reference_datetime == get_reference_datetime,
+                site_id %in% get_site_id) |> 
+  dplyr::collect() 
+
+dplyr::glimpse(example_df3)
+```
+
+
