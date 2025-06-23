@@ -56,7 +56,6 @@ One option is to navigate to the model_id you are interested using the `arrow::o
 For example to get the forecasts from the `tg_arima` model:
 
 ```{r example-path}
-
 example_df <- arrow::open_dataset(file.path(project_dir, sub_dir, "forecasts_P1D_chla", "model_id=tg_arima")) |> 
   dplyr::collect() 
 
@@ -68,7 +67,6 @@ dplyr::glimpse(example_df)
 An altervative method that can be used are to use the tidyverse functions to further subset the data based on queries. We can use filter to query the dataset before using `collect()`. 
 
 ```{r example-query}
-
 example_df2 <- arrow::open_dataset(file.path(project_dir, sub_dir, "forecasts_P1D_chla")) |>
   dplyr::filter(model_id == 'tg_arima') |> 
   dplyr::collect() 
@@ -93,4 +91,35 @@ example_df3 <- arrow::open_dataset(file.path(project_dir, sub_dir, "forecasts_P1
 dplyr::glimpse(example_df3)
 ```
 
+## Accessing scores
+
+The same method can be used to grab the evaluated forecasts (or scores). 
+
+```{r download-scores}
+archive_url_scores <- "https://sandbox.zenodo.org/records/277135/files/scores_P1D_chla.zip?download=1"
+
+save_here <- "chla_scores.zip"
+project_dir <- here::here()
+sub_dir <- 'scores'
+
+dir.create(file.path(project_dir, sub_dir))
+
+download.file(url = archive_url_scores,
+              destfile = file.path(project_dir, sub_dir, save_here), 
+              method = "curl")
+
+unzip(file.path(project_dir, sub_dir, save_here), exdir = file.path(project_dir, sub_dir))
+```
+
+And then open and query:
+
+```{r}
+get_reference_datetime <- lubridate::as_datetime("2024-01-01")
+
+example_scores <- arrow::open_dataset(file.path(project_dir, sub_dir, "scores_P1D_chla")) |>
+  dplyr::filter(reference_datetime == get_reference_datetime) |> 
+  dplyr::collect() 
+
+dplyr::glimpse(example_scores)
+```
 
