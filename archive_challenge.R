@@ -35,7 +35,7 @@ for (var in archive_vars) {
   
   message('Accessing bucket')
   df <- arrow::s3_bucket(bucket = s3_location, 
-                         endpoint_override = "sdsc.osn.xsede.org",
+                         endpoint_override = paste(aws_region, aws_endpoint, sep = "."),
                          anonymous = T) |> 
     arrow::open_dataset() 
   
@@ -81,7 +81,7 @@ for (var in archive_vars) {
   
   message('Accessing bucket')
   df <- arrow::s3_bucket(bucket = s3_location, 
-                         endpoint_override = "sdsc.osn.xsede.org",
+                         endpoint_override = paste(aws_region, aws_endpoint, sep = "."),
                          anonymous = T) |> 
     arrow::open_dataset() 
   
@@ -112,3 +112,38 @@ for (var in archive_vars) {
   
   setwd(archive_location)
 }
+
+
+## get targets and zip ---------------------------
+message('get targets')
+# each theme has a different targets file in a seperate csv file
+# download and zip together
+targets_url <- paste0("https://", 
+                      paste(aws_region, aws_endpoint, sep = "."), 
+                      "/bio230014-bucket01/challenges/targets/project_id=neon4cast/")
+
+P1D_themes <- c('P1D' = "aquatics",'P1D' =  "phenology", 'P1D' =  "terrestrial_daily")
+P1W_themes <- c('P1W' = "ticks",'P1W' =  "beetles")
+PT30M_themes <- c("PT30M" = "terrestrial_30min")
+
+archive_themes <- c(P1D_themes, P1W_themes)
+save_targets <- 'targets/targets'
+dir.create(file.path(archive_location, save_targets), recursive = T)
+
+for (i in 1:length(archive_themes)) {
+  message(archive_themes[i])
+  message('download')
+  read_csv(paste0(targets_url, "duration=", names(archive_themes[i]), "/", archive_themes[i], "-targets.csv.gz")) |> 
+    write_csv(file.path(archive_location,
+                        save_targets,
+                        paste0(paste('targets', names(archive_themes[i]), archive_themes[i], sep = '_'), '.csv.gz')))
+}
+
+
+message('Zipping data')
+setwd(file.path(archive_location, 'targets'))
+files2zip <- fs::dir_ls(recurse = TRUE)
+files2zip <- files2zip[stringr::str_detect(files2zip, pattern = "DS_Store", negate = TRUE)][-1]
+utils::zip(zipfile = file.path(archive_location, "targets"), files = files2zip)
+
+setwd(archive_location)
