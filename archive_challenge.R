@@ -16,10 +16,14 @@ P1D_vars <- c('P1D' = "chla",'P1D' =  "gcc_90", 'P1D' =  "le", 'P1D' =  "nee",
 P1W_vars <- c('P1W' = "abundance", 'P1W' = "richness",'P1W' = "amblyomma_americanum")
 PT30M_vars <- c('PT30M' = "le", 'PT30M' = "nee")
 
-archive_vars <- c(P1D_vars, PT30M_vars) # add others in here if needed!
+archive_vars <- c(P1D_vars) # add others in here if needed!
 
 archive_location <- file.path(here::here(), "archive")
 dir.create(archive_location, showWarnings = F)
+
+# do you want to check the files before zipping?
+apply_checks <- F
+
 
 # get the forecasts and zip -----------
 message('Getting forecasts')
@@ -39,23 +43,34 @@ for (var in archive_vars) {
                          anonymous = T) |> 
     arrow::open_dataset() 
   
-  # Write locally
-  message('Writing locally')
-  arrow::write_dataset(df,
-                       path = file.path(archive_location, 
-                                        paste("forecasts",names(var), var, sep = "_"), 
-                                        paste("forecasts",names(var), var, sep = "_")),
-                       hive_style = TRUE,
-                       partitioning = c("model_id"))
-  
   # Check forecasts before zipping 
   # Checks for duplicates, missing forecasts
-  # message('Checking for duplicates')
-  # local_df <- arrow::open_dataset(file.path(archive_location, paste0("forecasts_P1D_",var), paste0("forecasts_P1D_",var))) |> 
-  #   filter(!is.na(prediction))  |> 
-  #   collect() |> 
-  #   group_by(reference_datetime, datetime, variable, model_id, duration, family, parameter, site_id, project_id) |> 
-  #   slice_head(n=1) 
+  # This could be very slow! Might need to go my model_id??
+  if (apply_checks) {
+    message('Checking for duplicates and missing forecasts')
+    df |>
+      filter(!is.na(prediction))  |>
+      collect() |>
+      group_by(reference_datetime, datetime, variable, model_id, duration, family, parameter, site_id, project_id) |>
+      slice_head(n=1) |> 
+      arrow::write_dataset(path = file.path(archive_location, 
+                                            paste("forecasts",names(var), var, sep = "_"), 
+                                            paste("forecasts",names(var), var, sep = "_")),
+                           hive_style = TRUE,
+                           partitioning = c("model_id"))
+    message('Checked and written')
+  } else {
+    # Write locally
+    message('Writing locally')
+    arrow::write_dataset(df,
+                         path = file.path(archive_location, 
+                                          paste("forecasts",names(var), var, sep = "_"), 
+                                          paste("forecasts",names(var), var, sep = "_")),
+                         hive_style = TRUE,
+                         partitioning = c("model_id"))
+    
+  }
+  
   
   # Zip up
   message('Zipping data')
@@ -85,7 +100,25 @@ for (var in archive_vars) {
                          anonymous = T) |> 
     arrow::open_dataset() 
   
-  # Write locally
+  # Check scores before zipping 
+  # Checks for duplicates, missing scores
+  # This could be very slow! Might need to go my model_id??
+  if (apply_checks) {
+    message('Checking for duplicates and missing forecasts')
+    df |>
+      filter(!is.na(mean))  |>
+      collect() |>
+      group_by(reference_datetime, datetime, variable, model_id, duration, family, site_id, project_id) |>
+      slice_head(n=1) |> 
+      arrow::write_dataset(path = file.path(archive_location, 
+                                            paste("scores",names(var), var, sep = "_"), 
+                                            paste("scores",names(var), var, sep = "_")),
+                           hive_style = TRUE,
+                           partitioning = c("model_id"))
+    message('Checked and written')
+    
+  } else {
+      # Write locally
   message('Writing locally')
   arrow::write_dataset(df,
                        path = file.path(archive_location, 
@@ -93,15 +126,8 @@ for (var in archive_vars) {
                                         paste("scores",names(var), var, sep = "_")),
                        hive_style = TRUE,
                        partitioning = c("model_id"))
-  
-  # Check scores before zipping 
-  # Checks for duplicates, missing scores
-  # message('Checking for duplicates')
-  # local_df <- arrow::open_dataset(file.path(archive_location, paste0("forecasts_P1D_",var), paste0("forecasts_P1D_",var))) |> 
-  #   filter(!is.na(prediction))  |> 
-  #   collect() |> 
-  #   group_by(reference_datetime, datetime, variable, model_id, duration, family, parameter, site_id, project_id) |> 
-  #   slice_head(n=1) 
+  }
+
   
   # Zip up
   message('Zipping data')
@@ -114,7 +140,7 @@ for (var in archive_vars) {
 }
 
 
-## get targets and zip ---------------------------
+# get targets and zip ---------------------------
 message('get targets')
 # each theme has a different targets file in a seperate csv file
 # download and zip together
@@ -147,3 +173,8 @@ files2zip <- files2zip[stringr::str_detect(files2zip, pattern = "DS_Store", nega
 utils::zip(zipfile = file.path(archive_location, "targets"), files = files2zip)
 
 setwd(archive_location)
+
+# get NOAA drivers and zip ------------
+## get stage 3 -------
+
+
